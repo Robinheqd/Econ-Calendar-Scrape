@@ -3,8 +3,16 @@
   "version": "1.0.0",
   "description": "A Netlify function to scrape economic calendar data.",
   "main": "functions/scrape-calendar.js",
+  "scripts": {
+    "netlify:build": "netlify-lambda build functions"
+  },
   "dependencies": {
+    "@sparticuz/chromium": "^122.0.0",
+    "puppeteer-core": "^22.6.5",
     "axios": "^1.6.8",
     "cheerio": "^1.0.0-rc.12"
+  },
+  "devDependencies": {
+    "netlify-lambda": "^2.0.16"
   }
 }
