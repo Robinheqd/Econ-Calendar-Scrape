@@ -26,44 +26,46 @@ exports.handler = async (event, context) => {
         const $ = cheerio.load(data);
         const events = [];
 
-        // Updated selector to find the table rows.
-        // The table has a tbody with tr elements, which contain the event data.
+        // The website structure might dynamically load data. The best strategy is to target the main
+        // table with a unique ID and then iterate through its rows and columns.
         const calendarTableRows = $('#calendar > tbody > tr');
 
         if (calendarTableRows.length === 0) {
-            console.warn("Scraping completed, but no calendar table rows were found.");
+            console.warn("Scraping completed, but no calendar table rows were found. The website's structure may have changed, or the content is loaded dynamically.");
             return {
-                statusCode: 200, 
+                statusCode: 200,
                 headers: {
                     'Content-Type': 'application/json',
                     'Access-Control-Allow-Origin': '*',
                     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
                     'Access-Control-Allow-Headers': 'Content-Type',
                 },
-                body: JSON.stringify(events),
+                body: JSON.stringify([]),
             };
         }
+
+        console.log(`Found ${calendarTableRows.length} potential rows to scrape.`);
 
         calendarTableRows.each((i, row) => {
             try {
                 const columns = $(row).find('td');
 
+                // A typical event row has at least 10 columns. Header rows might have fewer.
                 if (columns.length < 10) {
-                    // This is likely a header row or a blank row, skip it.
+                    // This is likely a header row or a blank row.
                     return;
                 }
-                
-                // Using more resilient selectors based on the provided HTML
-                const dateText = $(columns[0]).find('span.event-1').text().trim() || $(columns[0]).find('span').text().trim();
-                const countryText = $(columns[1]).find('td.calendar-iso').text().trim();
-                const eventNameText = $(columns[2]).find('a.calendar-event').text().trim();
+
+                // New scraping logic that is less reliant on specific classes.
+                // We're now grabbing elements based on their position in the row.
+                const dateText = $(columns[0]).text().trim();
+                const countryText = $(columns[1]).find('.calendar-iso').text().trim();
+                const eventNameText = $(columns[2]).text().trim();
                 const impactText = $(columns[3]).find('i').attr('title');
-                const actualValue = $(columns[4]).find('#actual').text().trim();
-                const previousValue = $(columns[5]).find('#previous').text().trim();
-                const forecastValue = $(columns[6]).find('#consensus').text().trim();
-                
-                // The currency is not easily scraped from the provided HTML. Leaving it empty for now.
-                const currencyText = '';
+                const actualValue = $(columns[4]).text().trim();
+                const previousValue = $(columns[5]).text().trim();
+                const forecastValue = $(columns[6]).text().trim();
+                const currencyText = $(columns[7]).text().trim();
 
                 if (eventNameText) { 
                     events.push({
@@ -79,23 +81,13 @@ exports.handler = async (event, context) => {
                 }
             } catch (innerError) {
                 console.error(`Error processing row ${i}: ${innerError.message}`);
-                // Continue to the next row, as the outer try/catch will handle the final response.
             }
         });
 
         if (events.length === 0) {
-            console.warn("Scraping completed, but no valid events were found.");
-            // Return a 200 with an empty array if no events match the scraping logic.
-            return {
-                statusCode: 200,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-                    'Access-Control-Allow-Headers': 'Content-Type',
-                },
-                body: JSON.stringify([]),
-            };
+            console.warn("Scraping completed, but no valid events were found. The website structure may have changed or the date range is empty.");
+        } else {
+            console.log(`Successfully scraped ${events.length} events.`);
         }
 
         return {
