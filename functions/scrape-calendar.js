@@ -26,12 +26,14 @@ exports.handler = async (event, context) => {
         const $ = cheerio.load(data);
         const events = [];
 
+        // Updated selector to find the table rows.
+        // The table has a tbody with tr elements, which contain the event data.
         const calendarTableRows = $('#calendar > tbody > tr');
-        
+
         if (calendarTableRows.length === 0) {
             console.warn("Scraping completed, but no calendar table rows were found.");
             return {
-                statusCode: 200, // Return 200 with an empty array if no events are found
+                statusCode: 200, 
                 headers: {
                     'Content-Type': 'application/json',
                     'Access-Control-Allow-Origin': '*',
@@ -47,45 +49,54 @@ exports.handler = async (event, context) => {
                 const columns = $(row).find('td');
 
                 if (columns.length < 10) {
-                    // This is a header row or an empty row, continue to the next one
+                    // This is likely a header row or a blank row, skip it.
                     return;
                 }
                 
-                const dateElement = $(columns[0]).find('span');
-                const countryElement = $(columns[1]).find('table tr:nth-child(1) td:nth-child(2)');
-                const eventNameElement = $(columns[2]).find('a');
-                const impactElement = $(columns[3]).find('i');
-                const actualElement = $(columns[4]).find('#actual');
-                const previousElement = $(columns[5]).find('#previous');
-                const forecastElement = $(columns[6]).find('#consensus');
-                const currencyElement = $(columns[7]); 
+                // Using more resilient selectors based on the provided HTML
+                const dateText = $(columns[0]).find('span.event-1').text().trim() || $(columns[0]).find('span').text().trim();
+                const countryText = $(columns[1]).find('td.calendar-iso').text().trim();
+                const eventNameText = $(columns[2]).find('a.calendar-event').text().trim();
+                const impactText = $(columns[3]).find('i').attr('title');
+                const actualValue = $(columns[4]).find('#actual').text().trim();
+                const previousValue = $(columns[5]).find('#previous').text().trim();
+                const forecastValue = $(columns[6]).find('#consensus').text().trim();
+                
+                // The currency is not easily scraped from the provided HTML. Leaving it empty for now.
+                const currencyText = '';
 
-                const date = dateElement.length ? dateElement.text().trim() : '';
-                const country = countryElement.length ? countryElement.text().trim() : '';
-                const eventName = eventNameElement.length ? eventNameElement.text().trim() : '';
-                const impact = impactElement.length ? impactElement.attr('title') : '';
-                const actual = actualElement.length ? actualElement.text().trim() : '';
-                const previous = previousElement.length ? previousElement.text().trim() : '';
-                const forecast = forecastElement.length ? forecastElement.text().trim() : '';
-                const currency = currencyElement.length ? currencyElement.text().trim() : '';
-
-                if (eventName) { // Only push if there is an event name
+                if (eventNameText) { 
                     events.push({
-                        date: date,
-                        country: country,
-                        event: eventName,
-                        impact: impact,
-                        actual: actual,
-                        previous: previous,
-                        estimate: forecast,
-                        currency: currency,
+                        date: dateText,
+                        country: countryText,
+                        event: eventNameText,
+                        impact: impactText,
+                        actual: actualValue,
+                        previous: previousValue,
+                        estimate: forecastValue,
+                        currency: currencyText,
                     });
                 }
             } catch (innerError) {
                 console.error(`Error processing row ${i}: ${innerError.message}`);
-                // Continue to the next row
+                // Continue to the next row, as the outer try/catch will handle the final response.
             }
         });
+
+        if (events.length === 0) {
+            console.warn("Scraping completed, but no valid events were found.");
+            // Return a 200 with an empty array if no events match the scraping logic.
+            return {
+                statusCode: 200,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type',
+                },
+                body: JSON.stringify([]),
+            };
+        }
 
         return {
             statusCode: 200,
