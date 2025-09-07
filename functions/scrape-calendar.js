@@ -17,7 +17,6 @@ exports.handler = async (event, context) => {
 
         const url = `https://tradingeconomics.com/calendar?start=${startdate}&end=${enddate}`;
 
-        // Added User-Agent header to mimic a browser request
         const { data } = await axios.get(url, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -27,48 +26,65 @@ exports.handler = async (event, context) => {
         const $ = cheerio.load(data);
         const events = [];
 
-        // Updated scraping logic to be more resilient
         const calendarTableRows = $('#calendar > tbody > tr');
         
         if (calendarTableRows.length === 0) {
-            console.error("Scraping failed: No calendar table rows found. The website structure may have changed.");
+            console.warn("Scraping completed, but no calendar table rows were found.");
             return {
-                statusCode: 404, // Use 404 for "not found"
+                statusCode: 200, // Return 200 with an empty array if no events are found
                 headers: {
+                    'Content-Type': 'application/json',
                     'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type',
                 },
-                body: JSON.stringify({ error: 'No economic events found for the specified date range. The website structure may have changed or there are no events.', details: `Attempted to scrape from URL: ${url}` }),
+                body: JSON.stringify(events),
             };
         }
 
         calendarTableRows.each((i, row) => {
-            const columns = $(row).find('td');
+            try {
+                const columns = $(row).find('td');
 
-            if (columns.length < 10) {
-                console.warn(`Skipping row ${i} due to insufficient columns. HTML: ${$(row).html()}`);
-                return;
+                if (columns.length < 10) {
+                    // This is a header row or an empty row, continue to the next one
+                    return;
+                }
+                
+                const dateElement = $(columns[0]).find('span');
+                const countryElement = $(columns[1]).find('table tr:nth-child(1) td:nth-child(2)');
+                const eventNameElement = $(columns[2]).find('a');
+                const impactElement = $(columns[3]).find('i');
+                const actualElement = $(columns[4]).find('#actual');
+                const previousElement = $(columns[5]).find('#previous');
+                const forecastElement = $(columns[6]).find('#consensus');
+                const currencyElement = $(columns[7]); 
+
+                const date = dateElement.length ? dateElement.text().trim() : '';
+                const country = countryElement.length ? countryElement.text().trim() : '';
+                const eventName = eventNameElement.length ? eventNameElement.text().trim() : '';
+                const impact = impactElement.length ? impactElement.attr('title') : '';
+                const actual = actualElement.length ? actualElement.text().trim() : '';
+                const previous = previousElement.length ? previousElement.text().trim() : '';
+                const forecast = forecastElement.length ? forecastElement.text().trim() : '';
+                const currency = currencyElement.length ? currencyElement.text().trim() : '';
+
+                if (eventName) { // Only push if there is an event name
+                    events.push({
+                        date: date,
+                        country: country,
+                        event: eventName,
+                        impact: impact,
+                        actual: actual,
+                        previous: previous,
+                        estimate: forecast,
+                        currency: currency,
+                    });
+                }
+            } catch (innerError) {
+                console.error(`Error processing row ${i}: ${innerError.message}`);
+                // Continue to the next row
             }
-
-            // Corrected selectors based on provided HTML
-            const date = $(columns[0]).find('span').text().trim();
-            const country = $(columns[1]).find('table tr:nth-child(1) td:nth-child(2)').text().trim();
-            const eventName = $(columns[2]).find('a').text().trim();
-            const impact = $(columns[3]).find('i').attr('title');
-            const actual = $(columns[4]).find('#actual').text().trim();
-            const previous = $(columns[5]).find('#previous').text().trim();
-            const forecast = $(columns[6]).find('#consensus').text().trim();
-            const currency = ''; // Currency is not directly available in this part of the HTML
-
-            events.push({
-                date: date,
-                country: country,
-                event: eventName,
-                impact: impact,
-                actual: actual,
-                previous: previous,
-                estimate: forecast,
-                currency: currency,
-            });
         });
 
         return {
