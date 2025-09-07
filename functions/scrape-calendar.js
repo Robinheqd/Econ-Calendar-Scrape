@@ -17,13 +17,20 @@ exports.handler = async (event, context) => {
 
         const url = `https://tradingeconomics.com/calendar?start=${startdate}&end=${enddate}`;
 
-        const { data } = await axios.get(url);
+        // Added User-Agent header to mimic a browser request
+        const { data } = await axios.get(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            },
+        });
+
         const $ = cheerio.load(data);
         const events = [];
 
         // Check if the calendar table exists
-        const calendarTable = $('#calendar > tbody > tr');
-        if (calendarTable.length === 0) {
+        const calendarTableRows = $('#calendar > tbody > tr');
+        
+        if (calendarTableRows.length === 0) {
             console.error("Scraping failed: Calendar table not found. The website structure may have changed.");
             return {
                 statusCode: 500,
@@ -34,16 +41,18 @@ exports.handler = async (event, context) => {
             };
         }
 
-        calendarTable.each((i, row) => {
+        calendarTableRows.each((i, row) => {
             const columns = $(row).find('td');
 
-            if (columns.length < 10) return;
+            if (columns.length < 10) {
+                console.warn(`Skipping row ${i} due to insufficient columns. HTML: ${$(row).html()}`);
+                return;
+            }
 
-            // Use more reliable scraping by targeting specific data attributes or classes if possible
             const date = $(columns[0]).attr('data-value');
             const country = $(columns[1]).find('a').text().trim();
             const eventName = $(columns[2]).find('a').text().trim();
-            const impact = $(columns[3]).find('i').attr('title'); // E.g., 'Low', 'Medium', 'High'
+            const impact = $(columns[3]).find('i').attr('title');
             const actual = $(columns[4]).text().trim();
             const previous = $(columns[5]).text().trim();
             const forecast = $(columns[6]).text().trim();
