@@ -1,7 +1,11 @@
-const axios = require('axios');
+const puppeteer = require('puppeteer-core');
+const chromium = require('@sparticuz/chromium');
 const cheerio = require('cheerio');
 
 exports.handler = async (event, context) => {
+    let browser = null;
+    let result = null;
+
     try {
         const { startdate, enddate } = event.queryStringParameters;
 
@@ -16,31 +20,34 @@ exports.handler = async (event, context) => {
         }
 
         const url = `https://tradingeconomics.com/calendar?start=${startdate}&end=${enddate}`;
-
-        const { data } = await axios.get(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            },
+        
+        console.log(`Starting headless browser for URL: ${url}`);
+        browser = await puppeteer.launch({
+            args: [...chromium.args, '--hide-scrollbars', '--disable-web-security'],
+            defaultViewport: chromium.defaultViewport,
+            executablePath: await chromium.executablePath(),
+            headless: chromium.headless,
         });
 
-        const $ = cheerio.load(data);
+        const page = await browser.newPage();
+        await page.goto(url, { waitUntil: 'networkidle0' });
+
+        const html = await page.content();
+        const $ = cheerio.load(html);
         const events = [];
 
-        // The website structure might dynamically load data. The best strategy is to target the main
-        // table with a unique ID and then iterate through its rows and columns.
         const calendarTableRows = $('#calendar > tbody > tr');
 
         if (calendarTableRows.length === 0) {
             console.warn("Scraping completed, but no calendar table rows were found. The website's structure may have changed, or the content is loaded dynamically.");
+            
             return {
-                statusCode: 200,
+                statusCode: 200, 
                 headers: {
                     'Content-Type': 'application/json',
                     'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-                    'Access-Control-Allow-Headers': 'Content-Type',
                 },
-                body: JSON.stringify([]),
+                body: JSON.stringify(events),
             };
         }
 
@@ -50,14 +57,10 @@ exports.handler = async (event, context) => {
             try {
                 const columns = $(row).find('td');
 
-                // A typical event row has at least 10 columns. Header rows might have fewer.
                 if (columns.length < 10) {
-                    // This is likely a header row or a blank row.
                     return;
                 }
-
-                // New scraping logic that is less reliant on specific classes.
-                // We're now grabbing elements based on their position in the row.
+                
                 const dateText = $(columns[0]).text().trim();
                 const countryText = $(columns[1]).find('.calendar-iso').text().trim();
                 const eventNameText = $(columns[2]).text().trim();
@@ -90,7 +93,7 @@ exports.handler = async (event, context) => {
             console.log(`Successfully scraped ${events.length} events.`);
         }
 
-        return {
+        result = {
             statusCode: 200,
             headers: {
                 'Content-Type': 'application/json',
@@ -102,12 +105,17 @@ exports.handler = async (event, context) => {
         };
     } catch (error) {
         console.error("An unhandled error occurred in the serverless function:", error);
-        return {
+        result = {
             statusCode: 500,
             headers: {
                 'Access-Control-Allow-Origin': '*',
             },
             body: JSON.stringify({ error: `An unhandled server error occurred: ${error.message}` }),
         };
+    } finally {
+        if (browser !== null) {
+            await browser.close();
+        }
     }
+    return result;
 };
