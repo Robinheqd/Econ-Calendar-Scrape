@@ -17,6 +17,7 @@ exports.handler = async (event, context) => {
 
         const url = `https://tradingeconomics.com/calendar?start=${startdate}&end=${enddate}`;
 
+        // Added User-Agent header to mimic a browser request
         const { data } = await axios.get(url, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -27,10 +28,10 @@ exports.handler = async (event, context) => {
         const events = [];
 
         // Updated scraping logic to be more resilient
-        const calendarTableRows = $('#calendar > tbody > tr[data-te-id]');
+        const calendarTableRows = $('#calendar > tbody > tr');
         
         if (calendarTableRows.length === 0) {
-            console.error("Scraping failed: No events found with data-te-id attribute. The website structure may have changed.");
+            console.error("Scraping failed: No calendar table rows found. The website structure may have changed.");
             return {
                 statusCode: 404, // Use 404 for "not found"
                 headers: {
@@ -48,15 +49,16 @@ exports.handler = async (event, context) => {
                 return;
             }
 
-            const date = $(columns[0]).attr('data-value');
-            const country = $(columns[1]).find('a').text().trim();
+            // Corrected selectors based on provided HTML
+            const date = $(columns[0]).find('span').text().trim();
+            const country = $(columns[1]).find('table tr:nth-child(1) td:nth-child(2)').text().trim();
             const eventName = $(columns[2]).find('a').text().trim();
             const impact = $(columns[3]).find('i').attr('title');
-            const actual = $(columns[4]).text().trim();
-            const previous = $(columns[5]).text().trim();
-            const forecast = $(columns[6]).text().trim();
-            const currency = $(columns[7]).text().trim();
-            
+            const actual = $(columns[4]).find('#actual').text().trim();
+            const previous = $(columns[5]).find('#previous').text().trim();
+            const forecast = $(columns[6]).find('#consensus').text().trim();
+            const currency = ''; // Currency is not directly available in this part of the HTML
+
             events.push({
                 date: date,
                 country: country,
