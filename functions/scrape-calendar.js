@@ -8,6 +8,9 @@ exports.handler = async (event, context) => {
         if (!startdate || !enddate) {
             return {
                 statusCode: 400,
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                },
                 body: JSON.stringify({ error: 'Missing startdate or enddate query parameters.' }),
             };
         }
@@ -18,15 +21,29 @@ exports.handler = async (event, context) => {
         const $ = cheerio.load(data);
         const events = [];
 
-        $('#calendar > tbody > tr').each((i, row) => {
+        // Check if the calendar table exists
+        const calendarTable = $('#calendar > tbody > tr');
+        if (calendarTable.length === 0) {
+            console.error("Scraping failed: Calendar table not found. The website structure may have changed.");
+            return {
+                statusCode: 500,
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                },
+                body: JSON.stringify({ error: 'Scraping failed. The website structure may have changed.' }),
+            };
+        }
+
+        calendarTable.each((i, row) => {
             const columns = $(row).find('td');
 
             if (columns.length < 10) return;
 
+            // Use more reliable scraping by targeting specific data attributes or classes if possible
             const date = $(columns[0]).attr('data-value');
             const country = $(columns[1]).find('a').text().trim();
             const eventName = $(columns[2]).find('a').text().trim();
-            const impact = $(columns[3]).find('i').attr('title');
+            const impact = $(columns[3]).find('i').attr('title'); // E.g., 'Low', 'Medium', 'High'
             const actual = $(columns[4]).text().trim();
             const previous = $(columns[5]).text().trim();
             const forecast = $(columns[6]).text().trim();
@@ -48,7 +65,6 @@ exports.handler = async (event, context) => {
             statusCode: 200,
             headers: {
                 'Content-Type': 'application/json',
-                // This is the fix for the CORS error
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
                 'Access-Control-Allow-Headers': 'Content-Type',
@@ -56,12 +72,13 @@ exports.handler = async (event, context) => {
             body: JSON.stringify(events),
         };
     } catch (error) {
+        console.error("An unhandled error occurred in the serverless function:", error);
         return {
             statusCode: 500,
             headers: {
                 'Access-Control-Allow-Origin': '*',
             },
-            body: JSON.stringify({ error: `An error occurred: ${error.message}` }),
+            body: JSON.stringify({ error: `An unhandled server error occurred: ${error.message}` }),
         };
     }
 };
