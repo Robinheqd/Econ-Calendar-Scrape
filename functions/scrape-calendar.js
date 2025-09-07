@@ -17,7 +17,6 @@ exports.handler = async (event, context) => {
 
         const url = `https://tradingeconomics.com/calendar?start=${startdate}&end=${enddate}`;
 
-        // Added User-Agent header to mimic a browser request
         const { data } = await axios.get(url, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -27,17 +26,17 @@ exports.handler = async (event, context) => {
         const $ = cheerio.load(data);
         const events = [];
 
-        // Check if the calendar table exists
-        const calendarTableRows = $('#calendar > tbody > tr');
+        // Updated scraping logic to be more resilient
+        const calendarTableRows = $('#calendar > tbody > tr[data-te-id]');
         
         if (calendarTableRows.length === 0) {
-            console.error("Scraping failed: Calendar table not found. The website structure may have changed.");
+            console.error("Scraping failed: No events found with data-te-id attribute. The website structure may have changed.");
             return {
-                statusCode: 500,
+                statusCode: 404, // Use 404 for "not found"
                 headers: {
                     'Access-Control-Allow-Origin': '*',
                 },
-                body: JSON.stringify({ error: 'Scraping failed. The website structure may have changed.' }),
+                body: JSON.stringify({ error: 'No economic events found for the specified date range. The website structure may have changed or there are no events.', details: `Attempted to scrape from URL: ${url}` }),
             };
         }
 
